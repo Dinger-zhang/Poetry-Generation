@@ -11,7 +11,7 @@ class Config(object):
     weight_decay = 1e-4
     use_gpu = True
     epoch = 50
-    batch_size = 64
+    batch_size = 256
     maxlen = 125  # 超过这个长度的之后字被丢弃，小于这个长度的在前面补空格
     # use_env = True # 是否使用visodm
     env = 'poetry'  # visdom env

@@ -24,7 +24,8 @@ def train():
     dataloader = DataLoader(data,
                             batch_size=Config.batch_size,
                             shuffle=True,
-                            num_workers=2)
+                            num_workers=4,
+                            pin_memory=True)
 
     # 定义模型
     model = PoetryModel(len(word2ix),
@@ -38,7 +39,7 @@ def train():
     model.to(device)
     loss_meter = meter.AverageValueMeter()
     # 进行训练
-    f = open('result.txt','w')
+    f = open('result.txt','w',encoding='utf-8')
     for epoch in range(Config.epoch):
         loss_meter.reset()
         for li, data_ in tqdm(enumerate(dataloader), total=len(dataloader)):

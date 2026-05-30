@@ -4,13 +4,13 @@
 
 ## 项目描述
 
-这是一个基于深度学习的唐诗自动生成项目，使用PyTorch框架实现LSTM模型，通过训练唐诗数据集来生成新的诗歌。支持首句生成和藏头诗生成两种模式。
+这是一个基于深度学习的唐诗自动生成项目，使用PyTorch框架实现Transformer模型，通过训练唐诗数据集来生成新的诗歌。支持首句生成和藏头诗生成两种模式。
 
 ## 功能特性
 
 - **诗歌生成**：基于给定的首句生成完整诗歌
 - **藏头诗生成**：根据指定的藏头字生成诗歌
-- **模型训练**：使用LSTM网络训练诗歌生成模型
+- **模型训练**：使用Transformer Encoder训练自回归诗歌生成模型
 - **交互式测试**：提供命令行界面进行诗歌生成测试
 
 ## 环境要求
@@ -60,7 +60,7 @@ python test.py
 ## 文件说明
 
 - `main.py` - 模型训练脚本
-- `model.py` - LSTM诗歌生成模型定义
+- `model.py` - Transformer诗歌生成模型定义，保留旧LSTM模型类用于对照
 - `generate.py` - 诗歌生成函数
 - `test.py` - 交互式测试脚本
 - `config.py` - 配置文件，包含模型参数和训练设置
@@ -73,13 +73,17 @@ python test.py
 
 主要配置参数在 `config.py` 中：
 
-- `num_layers`: LSTM层数（默认3）
+- `transformer_num_layers`: Transformer Encoder层数（默认6）
+- `transformer_nhead`: 多头注意力头数（默认8）
+- `transformer_dim_feedforward`: 前馈网络维度（默认1024）
+- `transformer_dropout`: Dropout比例（默认0.1）
 - `embedding_dim`: 词嵌入维度（默认256）
-- `hidden_dim`: 隐藏层维度（默认512）
-- `batch_size`: 批大小（默认64）
+- `batch_size`: 批大小（默认256）
 - `epoch`: 训练轮数（默认50）
 - `lr`: 学习率（默认0.001）
 - `use_gpu`: 是否使用GPU（默认True）
+
+默认会加载 `checkpoints/tang_transformer_30.pth` 进行测试或继续训练；如果需要从头训练Transformer，将 `config.py` 中的 `model_path` 改为 `None`。
 
 ## 数据集
 

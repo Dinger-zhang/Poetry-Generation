@@ -1,127 +1,147 @@
+# main.py
+
 import os
-import torch as t
+import torch
 import numpy as np
-from torch.utils.data import DataLoader
-from torch import optim
-from torch import nn
-from torchnet import meter
-from tqdm import tqdm
+from transformers import (
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
+    Trainer,
+    TrainingArguments,
+    DataCollatorForLanguageModeling
+)
+from torch.utils.data import Dataset
 from config import Config
-from generate import generate
+import warnings
+warnings.filterwarnings("ignore")
 
-if Config.use_transformer:
-    from model_transformer import TransformerPoetryModel as PoetryModel
-else:
-    from model import PoetryModel
+# ---------- 数据集类 ----------
+class PoetryDataset(Dataset):
+    def __init__(self, input_ids_list, attention_mask_list):
+        self.input_ids = input_ids_list
+        self.attention_mask = attention_mask_list
 
-def train():
-    os.makedirs('checkpoints', exist_ok=True)
+    def __getitem__(self, idx):
+        return {
+            'input_ids': self.input_ids[idx],
+            'attention_mask': self.attention_mask[idx]
+        }
 
-    if Config.use_gpu:
-        Config.device = t.device("cuda")
-    else:
-        Config.device = t.device("cpu")
-    device = Config.device
+    def __len__(self):
+        return len(self.input_ids)
 
-    # 加载数据
-    datas = np.load("tang.npz", allow_pickle=True)
-    data = datas['data']
+def load_and_prepare_data(config):
+    """加载 tang.npz，将整数序列转成文本，再用 GPT‑2 tokenizer 编码"""
+    print("加载 tang.npz ...")
+    datas = np.load(config.pickle_path, allow_pickle=True)
+    data = datas['data']            # (N, maxlen) 整数矩阵
     ix2word = datas['ix2word'].item()
     word2ix = datas['word2ix'].item()
-    data = t.from_numpy(data)
-    dataloader = DataLoader(data,
-                            batch_size=Config.batch_size,
-                            shuffle=True,
-                            num_workers=4,
-                            pin_memory=True)
 
-    # 初始化模型
-    vocab_size = len(word2ix)
-    if Config.use_transformer:
-        model = PoetryModel(vocab_size,
-                            embedding_dim=Config.embedding_dim,
-                            num_heads=Config.num_heads,
-                            num_layers=Config.transformer_layers,
-                            max_len=Config.maxlen,
-                            dropout=Config.dropout)
+    print("将整数序列转换为文本 ...")
+    texts = []
+    special_tokens = {'<START>', '<EOP>', '<UNK>', '<PAD>'}
+    for seq in data:
+        chars = []
+        for idx in seq:
+            if idx == 0:            # 假定 0 为填充符
+                continue
+            word = ix2word[idx]
+            if word in special_tokens:
+                continue
+            chars.append(word)
+        if chars:                   # 忽略空序列
+            texts.append(''.join(chars))
+    print(f"共加载 {len(texts)} 首有效诗歌")
+    import random
+    texts = random.sample(texts, 10000)
+    print(f"采样后使用 {len(texts)} 首诗歌进行微调")
+    # 加载 GPT‑2 tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained(config.gpt2_model_name)
+    # GPT‑2 原始没有 pad_token，设置 eos_token 作为 pad_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # 编码所有文本（返回字典，键为 'input_ids', 'attention_mask'）
+    encodings = tokenizer(
+        texts,
+        truncation=True,
+        max_length=config.gpt2_max_length,
+        padding=False,           # 动态 padding 由 DataCollator 处理
+        return_tensors=None      # 返回 Python 列表
+    )
+    # 转换为 PyTorch tensor 列表（每个元素是一个样本的 tensor）
+    input_ids = [torch.tensor(seq, dtype=torch.long) for seq in encodings['input_ids']]
+    attention_masks = [torch.tensor(mask, dtype=torch.long) for mask in encodings['attention_mask']]
+
+    dataset = PoetryDataset(input_ids, attention_masks)
+    return dataset, tokenizer
+
+def train():
+    # 禁用 wandb 等日志工具
+
+    os.environ["WANDB_DISABLED"] = "true"
+
+    # 设备设置
+    if Config.use_gpu and torch.cuda.is_available():
+        Config.device = torch.device("cuda")
     else:
-        model = PoetryModel(vocab_size,
-                            embedding_dim=Config.embedding_dim,
-                            hidden_dim=Config.hidden_dim)
+        Config.device = torch.device("cpu")
+    print(f"使用设备: {Config.device}")
+    # 创建输出目录
+    os.makedirs(Config.gpt2_output_dir, exist_ok=True)
 
-    optimizer = optim.AdamW(model.parameters(), lr=Config.lr, weight_decay=Config.weight_decay)
-    criterion = nn.CrossEntropyLoss()
+    # 准备数据集和 tokenizer
+    dataset, tokenizer = load_and_prepare_data(Config)
 
-    # 学习率预热
-    if Config.use_transformer and Config.warmup_steps > 0:
-        from torch.optim.lr_scheduler import LambdaLR
-        def lambda_lr(step):
-            if step < Config.warmup_steps:
-                return step / Config.warmup_steps
-            else:
-                return 1.0
-        scheduler = LambdaLR(optimizer, lr_lambda=lambda_lr)
-    else:
-        scheduler = None
+    # 加载 GPT‑2 模型
+    model = GPT2LMHeadModel.from_pretrained(Config.gpt2_model_name)
+    model.resize_token_embeddings(len(tokenizer))   # 确保 embedding 大小与 tokenizer 一致
+    model.to(Config.device)
 
-    # 加载预训练模型（如果有）
-    if Config.model_path and os.path.exists(Config.model_path):
-        state_dict = t.load(Config.model_path, map_location='cpu')
-        model.load_state_dict(state_dict, strict=False)
-        print(f"Loaded pretrained model from {Config.model_path}")
-    else:
-        print("No pretrained model found, starting from scratch.")
+    # 数据整理器（动态 padding 和语言建模）
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,                     # 因果语言模型不使用 MLM
+        pad_to_multiple_of=8
+    )
 
-    model.to(device)
-    loss_meter = meter.AverageValueMeter()
+    # 训练参数（兼容新旧版本 transformers）
+    training_args = TrainingArguments(
+        output_dir=Config.gpt2_output_dir,
+        overwrite_output_dir=Config.gpt2_overwrite_output_dir,
+        num_train_epochs=Config.epoch,
+        per_device_train_batch_size=Config.batch_size,
+        gradient_accumulation_steps=2,
+        learning_rate=Config.gpt2_learning_rate,
+        weight_decay=Config.gpt2_weight_decay,
+        warmup_steps=Config.gpt2_warmup_steps,
+        logging_steps=Config.gpt2_logging_steps,
+        save_steps=Config.gpt2_save_steps,
+        fp16=Config.gpt2_fp16,
+        save_total_limit=3,
+        dataloader_num_workers=4,
+        logging_strategy="epoch"
+        # 移除 evaluation_strategy（没有验证集）
+        # 移除 report_to（避免 wandb 相关报错）
+    )
 
-    f = open('result_transformer.txt', 'w', encoding='utf-8') if Config.use_transformer else open('result.txt', 'w', encoding='utf-8')
+    # 创建 Trainer
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        data_collator=data_collator,
+        train_dataset=dataset,
+        tokenizer=tokenizer,
+    )
 
-    for epoch in range(Config.epoch):
-        loss_meter.reset()
-        model.train()
-        for li, data_ in tqdm(enumerate(dataloader), total=len(dataloader)):
-            data_ = data_.long().transpose(1, 0).contiguous()   # (seq_len, batch)
-            data_ = data_.to(device)
-            optimizer.zero_grad()
+    # 开始训练
+    trainer.train()
 
-            input_ = data_[:-1, :]      # (seq_len-1, batch)
-            target = data_[1:, :]       # (seq_len-1, batch)
-
-            output, _ = model(input_)
-            loss = criterion(output.view(-1, output.size(-1)), target.view(-1))
-            loss.backward()
-
-            t.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            if scheduler is not None:
-                scheduler.step()
-
-            loss_meter.add(loss.item())
-
-        avg_loss = loss_meter.mean
-        print(f"Epoch {epoch+1}/{Config.epoch} 训练损失为 {avg_loss:.6f}")
-        f.write(f"Epoch {epoch+1} 训练损失为 {avg_loss:.6f}\n")
-        f.flush()
-
-        # 每个 epoch 后生成示例诗歌（限制生成长度，避免超出模型范围）
-        model.eval()
-        test_words = list(u"春江花朝秋月夜")
-        for word in test_words:
-            # 注意：生成时限制最大长度 = min(Config.max_gen_len, Config.transformer_max_len - 10)
-            max_gen = min(Config.max_gen_len, Config.transformer_max_len - 10)
-            gen_poetry = ''.join(generate(model, word, ix2word, word2ix,
-                                          use_transformer=Config.use_transformer,
-                                          max_gen_len=max_gen))
-            print(gen_poetry[:200])  # 打印前200字避免刷屏
-            f.write(gen_poetry + "\n\n\n")
-            f.flush()
-
-        # 保存模型
-        save_path = f"{Config.model_prefix}_{epoch+1}.pth"
-        t.save(model.state_dict(), save_path)
-
-    f.close()
+    # 保存最终模型
+    trainer.save_model(Config.gpt2_output_dir)
+    tokenizer.save_pretrained(Config.gpt2_output_dir)
+    print(f"微调完成，模型已保存至 {Config.gpt2_output_dir}")
 
 if __name__ == '__main__':
     train()

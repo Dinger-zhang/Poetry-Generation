@@ -23,24 +23,27 @@ def load_model_and_tokenizer():
         _model.eval()
     return _model, _tokenizer
 
-def generate(model, tokenizer, prompt, max_new_tokens=Config.max_gen_len, temperature=0.7, top_k=50, top_p=0.95):
-    """普通诗歌生成，prompt 为字符串（如首句或几个字）"""
+def generate(model, tokenizer, prompt, max_new_tokens=Config.max_gen_len, temperature=0.5, top_k=30, top_p=0.9, repetition_penalty=1.3):
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
+            temperature=temperature,           # 降低随机性
+            top_k=top_k,                       # 减少候选范围
             top_p=top_p,
             do_sample=True,
+            repetition_penalty=repetition_penalty,  # 避免重复
             pad_token_id=tokenizer.eos_token_id,
-            repetition_penalty=1.2
+            eos_token_id=tokenizer.eos_token_id
         )
     generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    # 去掉可能重复的 prompt 部分
+    # 去除 prompt 本身
     if generated.startswith(prompt):
         generated = generated[len(prompt):]
+    # 过滤掉非中文、非标点的字符（可选）
+    import re
+    generated = re.sub(r'[^\u4e00-\u9fa5，。！？“”‘’；：、]', '', generated)
     return generated
 
 def gen_acrostic(model, tokenizer, start_words, prefix_words=None, max_new_tokens=Config.max_gen_len):

@@ -1,26 +1,32 @@
-
-
 class Config(object):
-    num_layers = 3  # LSTM层数
-    data_path = 'data/'  # 诗歌的文本文件存放路径
-    pickle_path = 'tang.npz'  # 预处理好的二进制文件
-    author = None  # 只学习某位作者的诗歌
-    constrain = None  # 长度限制
-    category = 'poet.tang'  # 类别，唐诗还是宋诗歌(poet.song)
-    lr = 1e-3
+    # 通用配置
+    num_layers = 3
+    data_path = 'data/'
+    pickle_path = 'tang.npz'
+    author = None
+    constrain = None
+    category = 'poet.tang'
+    lr = 3e-4
     weight_decay = 1e-4
     use_gpu = True
-    epoch = 50
-    batch_size = 256
-    maxlen = 125  # 超过这个长度的之后字被丢弃，小于这个长度的在前面补空格
-    # use_env = True # 是否使用visodm
-    env = 'poetry'  # visdom env
-    max_gen_len = 200  # 生成诗歌最长长度
+    epoch = 30                 # 可以跑更多 epoch
+    batch_size = 128            # 根据显存调整
+    maxlen = 125               # 训练时的最大长度（原始数据）
+    env = 'poetry'
+    max_gen_len = 200          # 生成诗歌最长长度
     debug_file = '/tmp/debugp'
-    model_path = "./checkpoints/tang_new.pth"  # 预训练模型路径
-    prefix_words = '仙路尽头谁为峰？一见无始道成空。'  # 不是诗歌的组成部分，用来控制生成诗歌的意境
-    start_words = '闲云潭影日悠悠'  # 诗歌开始
-    acrostic = False  # 是否是藏头诗
-    model_prefix = 'checkpoints/tang'  # 模型保存路径
+    model_path = None          # 开始训练时不加载预训练模型
+    prefix_words = '仙路尽头谁为峰？一见无始道成空。'
+    start_words = '闲云潭影日悠悠'
+    acrostic = False
+    model_prefix = 'checkpoints/tang_transformer'
     embedding_dim = 256
     hidden_dim = 512
+
+    # ----- Transformer 专属配置 -----
+    use_transformer = True
+    num_heads = 8
+    transformer_layers = 6
+    dropout = 0.1
+    warmup_steps = 2000
+    transformer_max_len = 512   # 新增：Transformer 支持的最大序列长度（大于 maxlen）

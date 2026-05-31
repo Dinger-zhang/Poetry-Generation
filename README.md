@@ -57,12 +57,30 @@ python test.py
 - 模式1：首句生成 - 输入诗歌的起始句子
 - 模式2：藏头诗生成 - 输入藏头字（不超过16个字，建议偶数）
 
+### 统一评估
+
+不同模型的训练损失口径可能不同，尤其是padding处理不一致时，不能直接用loss判断诗歌质量。可以用统一评估脚本只评估生成文本：
+```bash
+python evaluate_poetry.py LSTM=result.txt TransformerOld=result_transformer.txt TransformerFixed=result_transformer_fixed.txt --output evaluation_report.csv
+```
+
+默认只评估每个日志文件最后一轮生成样例；如果要评估日志中的全部样例，加入 `--all`。
+
+评估总分为0-100，由以下分项加权得到：
+- `clean`: 是否泄漏 `<START>`、`<EOP>`、`</s>` 等特殊符号，以及是否出现语料外字符
+- `form`: 句长是否接近五言/七言，标点密度、结尾和对句长度是否合理
+- `fluency`: 重复字、重复2/3-gram、连续重复等现象越少越好
+- `style`: 生成文本的字分布与唐诗语料的 Jensen-Shannon 相似度
+- `length`: 生成长度是否接近训练语料长度分布
+- `novelty`: 是否大量复刻训练语料中的长片段
+
 ## 文件说明
 
 - `main.py` - 模型训练脚本，训练时会去掉数据左侧padding，并在batch内右侧补齐
 - `model.py` - Transformer诗歌生成模型定义，保留旧LSTM模型类用于对照
 - `generate.py` - 诗歌生成函数
 - `test.py` - 交互式测试脚本
+- `evaluate_poetry.py` - 统一文本质量评估脚本
 - `config.py` - 配置文件，包含模型参数和训练设置
 - `data.py` - 数据加载脚本
 - `tang.npz` - 预处理好的唐诗数据集

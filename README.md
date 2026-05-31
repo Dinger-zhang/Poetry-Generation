@@ -74,6 +74,19 @@ python evaluate_poetry.py LSTM=result.txt TransformerOld=result_transformer.txt 
 - `length`: 生成长度是否接近训练语料长度分布
 - `novelty`: 是否大量复刻训练语料中的长片段
 
+### 完整对比实验
+
+重新生成课程报告中的完整实验结果：
+```bash
+conda run -n poem_writer python prepare_gpt2_clean_data.py --output-dir data/gpt2_clean
+conda run -n poem_writer python run_validation_experiments.py --output experiments/validation_losses.csv
+conda run -n poem_writer python generate_comparison_samples.py --output-dir experiments/generated --prompt-limit 50 --max-new-chars 80
+conda run -n poem_writer python evaluate_poetry.py LSTM=experiments/generated/LSTM.txt TransformerFixed=experiments/generated/TransformerFixed.txt GPT2=experiments/generated/GPT2.txt --output experiments/automatic_metrics_49prompts.csv
+conda run -n poem_writer python evaluate_poetry.py TransformerRaw=experiments/generated/TransformerRaw.txt TransformerFixed=experiments/generated/TransformerFixed.txt --output experiments/transformer_padding_ablation.csv
+conda run -n poem_writer python evaluate_poetry.py Greedy=experiments/generated/TransformerFixedGreedy.txt Sampling=experiments/generated/TransformerFixedSampling.txt Final=experiments/generated/TransformerFixedFinal.txt --output experiments/decoding_ablation.csv
+conda run -n poem_writer python make_manual_eval_template.py --samples experiments/generated/samples.csv --output experiments/manual_eval_template.csv --key experiments/manual_eval_key.csv
+```
+
 ## 文件说明
 
 - `main.py` - 模型训练脚本，训练时会去掉数据左侧padding，并在batch内右侧补齐
@@ -81,6 +94,10 @@ python evaluate_poetry.py LSTM=result.txt TransformerOld=result_transformer.txt 
 - `generate.py` - 诗歌生成函数
 - `test.py` - 交互式测试脚本
 - `evaluate_poetry.py` - 统一文本质量评估脚本
+- `run_validation_experiments.py` - 统一验证集loss实验脚本
+- `generate_comparison_samples.py` - 多方法统一prompt批量生成脚本
+- `prepare_gpt2_clean_data.py` - GPT-2干净文本数据导出脚本
+- `make_manual_eval_template.py` - 人工盲评表生成脚本
 - `config.py` - 配置文件，包含模型参数和训练设置
 - `data.py` - 数据加载脚本
 - `tang.npz` - 预处理好的唐诗数据集

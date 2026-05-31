@@ -20,10 +20,11 @@ def userTest():
     datas = np.load(Config.pickle_path, allow_pickle=True)
     ix2word = datas["ix2word"].item()
     word2ix = datas["word2ix"].item()
+    pad_index = word2ix.get("</s>")
 
-    model = PoetryModel(len(ix2word), Config.embedding_dim, Config.hidden_dim)
+    model = PoetryModel(len(ix2word), Config.embedding_dim, Config.hidden_dim, padding_idx=pad_index)
     if not Config.model_path or not os.path.exists(Config.model_path):
-        raise FileNotFoundError("模型文件不存在: %s" % Config.model_path)
+        raise FileNotFoundError("请先在config.py中把model_path设置为已训练好的模型文件")
     model.load_state_dict(t.load(Config.model_path, map_location="cpu"))
     model.to(device)
     model.eval()

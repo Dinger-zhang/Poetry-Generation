@@ -58,13 +58,15 @@ class TransformerPoetryModel(nn.Module):
         dim_feedforward=Config.transformer_dim_feedforward,
         dropout=Config.transformer_dropout,
         max_len=Config.max_position_len,
+        padding_idx=None,
     ):
         super(TransformerPoetryModel, self).__init__()
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.max_len = max_len
+        self.padding_idx = padding_idx
 
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=padding_idx)
         self.pos_encoder = PositionalEncoding(embedding_dim, dropout, max_len)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embedding_dim,
@@ -76,8 +78,10 @@ class TransformerPoetryModel(nn.Module):
         self.fc = nn.Linear(embedding_dim, vocab_size)
 
     def _generate_square_subsequent_mask(self, seq_len, device):
-        mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1)
-        return mask.masked_fill(mask == 1, float("-inf"))
+        return torch.triu(
+            torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
+            diagonal=1,
+        )
 
     def forward(self, input, hidden=None):
         if input.dim() == 1:
@@ -90,10 +94,17 @@ class TransformerPoetryModel(nn.Module):
 
         seq_len, batch_size = tokens.size()
         mask = self._generate_square_subsequent_mask(seq_len, tokens.device)
+        key_padding_mask = None
+        if self.padding_idx is not None:
+            key_padding_mask = tokens.eq(self.padding_idx).transpose(0, 1)
 
         embeds = self.embedding(tokens) * math.sqrt(self.embedding_dim)
         embeds = self.pos_encoder(embeds)
-        output = self.transformer(embeds, mask=mask)
+        output = self.transformer(
+            embeds,
+            mask=mask,
+            src_key_padding_mask=key_padding_mask,
+        )
         output = self.fc(output)
 
         if hidden is not None:

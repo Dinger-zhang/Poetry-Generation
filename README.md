@@ -44,7 +44,7 @@
 python main.py
 ```
 
-训练过程中会保存模型检查点到 `checkpoints/` 目录，并在 `result.txt` 中记录训练损失和生成的示例诗歌。
+训练过程中会保存模型检查点到 `checkpoints/` 目录，并在 `result_transformer_fixed.txt` 中记录训练损失和生成的示例诗歌。
 
 ### 测试生成
 
@@ -59,7 +59,7 @@ python test.py
 
 ## 文件说明
 
-- `main.py` - 模型训练脚本
+- `main.py` - 模型训练脚本，训练时会去掉数据左侧padding，并在batch内右侧补齐
 - `model.py` - Transformer诗歌生成模型定义，保留旧LSTM模型类用于对照
 - `generate.py` - 诗歌生成函数
 - `test.py` - 交互式测试脚本
@@ -67,7 +67,7 @@ python test.py
 - `data.py` - 数据加载脚本
 - `tang.npz` - 预处理好的唐诗数据集
 - `checkpoints/` - 模型检查点保存目录
-- `result.txt` - 训练结果记录文件
+- `result_transformer_fixed.txt` - 修正padding后的Transformer训练结果记录文件
 
 ## 配置说明
 
@@ -78,12 +78,12 @@ python test.py
 - `transformer_dim_feedforward`: 前馈网络维度（默认1024）
 - `transformer_dropout`: Dropout比例（默认0.1）
 - `embedding_dim`: 词嵌入维度（默认256）
-- `batch_size`: 批大小（默认256）
+- `batch_size`: 批大小（默认128）
 - `epoch`: 训练轮数（默认50）
-- `lr`: 学习率（默认0.001）
+- `lr`: 学习率（默认0.0003）
 - `use_gpu`: 是否使用GPU（默认True）
 
-默认会加载 `checkpoints/tang_transformer_30.pth` 进行测试或继续训练；如果需要从头训练Transformer，将 `config.py` 中的 `model_path` 改为 `None`。
+修正padding后建议从头训练Transformer，将 `config.py` 中的 `model_path` 设为 `None` 即可；如果只是测试或继续训练，可将 `model_path` 指向已有检查点。
 
 ## 数据集
 
